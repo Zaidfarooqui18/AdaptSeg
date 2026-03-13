@@ -29,3 +29,6 @@ python test_segmentation.py
 
 ## Tech Stack
 PyTorch | DINOv2 | Python 3.10
+
+## Drive link to Report 
+https://docs.google.com/document/d/1LarTl63pEn0CaszvflReS17iQKju4G58/edit?usp=drivesdk&ouid=107353413269586630000&rtpof=true&sd=true

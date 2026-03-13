@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>AdaptSeg — Training Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+
+  :root {
+    --bg:        #0a0c0f;
+    --surface:   #111318;
+    --border:    #1e2228;
+    --accent:    #f0a500;
+    --accent2:   #e05c2a;
+    --green:     #3ddc84;
+    --blue:      #4fa3e0;
+    --text:      #e8eaf0;
+    --muted:     #5a6070;
+    --font-head: 'Syne', sans-serif;
+    --font-mono: 'Space Mono', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Grid noise texture overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 39px, var(--border) 39px, var(--border) 40px),
+      repeating-linear-gradient(90deg, transparent, transparent 39px, var(--border) 39px, var(--border) 40px);
+    opacity: 0.25;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrapper { position: relative; z-index: 1; padding: 24px 28px; max-width: 1400px; margin: 0 auto; }
+
+  /* ── Header ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 16px; margin-bottom: 28px;
+  }
+  .logo {
+    font-family: var(--font-head);
+    font-weight: 800; font-size: 1.6rem;
+    letter-spacing: -1px;
+  }
+  .logo span { color: var(--accent); }
+  .badge {
+    font-size: 0.65rem; letter-spacing: 2px;
+    color: var(--muted); text-transform: uppercase;
+    border: 1px solid var(--border); padding: 4px 10px; border-radius: 2px;
+  }
+  .status-row { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+         box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+
+  /* ── Upload zone ── */
+  .upload-zone {
+    border: 1.5px dashed var(--border);
+    border-radius: 6px;
+    padding: 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+    margin-bottom: 28px;
+    background: var(--surface);
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: rgba(240,165,0,.04); }
+  .upload-zone h3 { font-family: var(--font-head); font-size: 1rem; color: var(--accent); margin-bottom: 6px; }
+  .upload-zone p  { font-size: 0.72rem; color: var(--muted); }
+  #file-input { display: none; }
+
+  /* ── Stat cards ── */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 28px; }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px; padding: 18px 20px;
+    position: relative; overflow: hidden;
+  }
+  .stat-card::after {
+    content: ''; position: absolute;
+    bottom: 0; left: 0; right: 0; height: 2px;
+    background: var(--accent-color, var(--accent));
+  }
+  .stat-label { font-size: 0.62rem; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .stat-value { font-family: var(--font-head); font-size: 2rem; font-weight: 800; line-height: 1; }
+  .stat-sub   { font-size: 0.65rem; color: var(--muted); margin-top: 4px; }
+
+  /* ── Charts grid ── */
+  .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 28px; }
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px; padding: 20px;
+  }
+  .chart-title {
+    font-family: var(--font-head); font-size: 0.8rem; font-weight: 600;
+    letter-spacing: 1px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .chart-title::before { content: ''; display: block; width: 3px; height: 14px; background: var(--accent); border-radius: 2px; }
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* ── Per-class IoU bars ── */
+  .class-grid {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px; padding: 20px;
+    margin-bottom: 28px;
+  }
+  .class-title {
+    font-family: var(--font-head); font-size: 0.8rem; font-weight: 600;
+    letter-spacing: 1px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 20px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .class-title::before { content: ''; display: block; width: 3px; height: 14px; background: var(--accent2); border-radius: 2px; }
+  .class-bars { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .class-bar-item { }
+  .class-bar-label { font-size: 0.62rem; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .class-bar-track { height: 6px; background: var(--border); border-radius: 3px; margin-bottom: 4px; overflow: hidden; }
+  .class-bar-fill  { height: 100%; border-radius: 3px; transition: width .6s cubic-bezier(.4,0,.2,1); background: var(--accent); }
+  .class-bar-value { font-size: 0.75rem; color: var(--text); font-family: var(--font-head); font-weight: 600; }
+
+  /* ── Epoch log ── */
+  .epoch-log {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px; padding: 20px;
+    margin-bottom: 28px;
+  }
+  .epoch-log-title {
+    font-family: var(--font-head); font-size: 0.8rem; font-weight: 600;
+    letter-spacing: 1px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .epoch-log-title::before { content: ''; display: block; width: 3px; height: 14px; background: var(--blue); border-radius: 2px; }
+  .log-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
+  .log-table th { color: var(--muted); text-align: left; padding: 6px 12px; border-bottom: 1px solid var(--border); font-weight: 400; letter-spacing: 1px; text-transform: uppercase; }
+  .log-table td { padding: 7px 12px; border-bottom: 1px solid rgba(30,34,40,.6); }
+  .log-table tr:last-child td { border-bottom: none; }
+  .log-table tr.best td { background: rgba(240,165,0,.05); }
+  .iou-badge { display: inline-block; padding: 2px 8px; border-radius: 2px; font-size: 0.7rem; }
+  .iou-low  { background: rgba(224,92,42,.15);  color: var(--accent2); }
+  .iou-mid  { background: rgba(79,163,224,.15); color: var(--blue); }
+  .iou-high { background: rgba(61,220,132,.15); color: var(--green); }
+
+  /* ── Controls ── */
+  .controls { display: flex; gap: 10px; margin-bottom: 28px; }
+  button {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--text); font-family: var(--font-mono);
+    font-size: 0.72rem; padding: 8px 18px;
+    border-radius: 3px; cursor: pointer;
+    letter-spacing: 1px; text-transform: uppercase;
+    transition: all .15s;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 700; }
+  button.primary:hover { background: #ffb800; }
+  input[type=range] { accent-color: var(--accent); }
+
+  /* ── Empty state ── */
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty-state h2 { font-family: var(--font-head); font-size: 1.2rem; color: var(--text); margin-bottom: 8px; }
+  .empty-state p  { font-size: 0.75rem; }
+
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    .stats  { grid-template-columns: repeat(2,1fr); }
+    .charts { grid-template-columns: 1fr; }
+    .class-bars { grid-template-columns: repeat(2,1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <!-- Header -->
+  <header>
+    <div>
+      <div class="logo">Adapt<span>Seg</span></div>
+      <div class="badge">Offroad Segmentation · Duality AI Hackathon</div>
+    </div>
+    <div class="status-row">
+      <div class="dot" id="live-dot" style="background:var(--muted); box-shadow:none;"></div>
+      <span id="status-text">Load training_log.json to begin</span>
+    </div>
+  </header>
+
+  <!-- Upload -->
+  <div class="upload-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+    <h3>📁 Drop training_log.json here</h3>
+    <p>Generated automatically by train.py in the <code>runs/</code> folder<br>
+       or drag & drop / click to browse</p>
+  </div>
+  <input type="file" id="file-input" accept=".json"/>
+
+  <!-- Controls (hidden until data loaded) -->
+  <div class="controls" id="controls" style="display:none;">
+    <button class="primary" onclick="refreshData()">↻ Refresh</button>
+    <button onclick="autoRefreshToggle()">⏱ Auto-Refresh: <span id="auto-label">OFF</span></button>
+    <button onclick="exportSummary()">⬇ Export Summary</button>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats" id="stats" style="display:none;">
+    <div class="stat-card" style="--accent-color: var(--accent)">
+      <div class="stat-label">Current Epoch</div>
+      <div class="stat-value" id="s-epoch">—</div>
+      <div class="stat-sub" id="s-epoch-total"></div>
+    </div>
+    <div class="stat-card" style="--accent-color: var(--green)">
+      <div class="stat-label">Best mIoU</div>
+      <div class="stat-value" id="s-iou" style="color:var(--green)">—</div>
+      <div class="stat-sub" id="s-iou-epoch"></div>
+    </div>
+    <div class="stat-card" style="--accent-color: var(--blue)">
+      <div class="stat-label">Train Loss</div>
+      <div class="stat-value" id="s-tloss" style="color:var(--blue)">—</div>
+      <div class="stat-sub">latest epoch</div>
+    </div>
+    <div class="stat-card" style="--accent-color: var(--accent2)">
+      <div class="stat-label">Val Loss</div>
+      <div class="stat-value" id="s-vloss" style="color:var(--accent2)">—</div>
+      <div class="stat-sub">latest epoch</div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts" id="charts" style="display:none;">
+    <div class="chart-card">
+      <div class="chart-title">Loss Curve</div>
+      <div class="chart-wrap"><canvas id="loss-chart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">mIoU Progress</div>
+      <div class="chart-wrap"><canvas id="iou-chart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Per-class IoU -->
+  <div class="class-grid" id="class-grid" style="display:none;">
+    <div class="class-title">Per-Class IoU — Latest Epoch</div>
+    <div class="class-bars" id="class-bars"></div>
+  </div>
+
+  <!-- Epoch log table -->
+  <div class="epoch-log" id="epoch-log" style="display:none;">
+    <div class="epoch-log-title">Epoch Log</div>
+    <div style="overflow-x:auto; max-height:320px; overflow-y:auto;">
+      <table class="log-table">
+        <thead><tr>
+          <th>Epoch</th><th>Train Loss</th><th>Val Loss</th><th>mIoU</th><th>Δ mIoU</th>
+        </tr></thead>
+        <tbody id="log-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div class="empty-state" id="empty-state">
+    <h2>No data loaded yet</h2>
+    <p>Upload <code>runs/training_log.json</code> generated by <code>train.py</code><br>
+       to see live charts, per-class IoU, and the full epoch log.</p>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────
+let DATA = null;
+let lossChart = null;
+let iouChart  = null;
+let autoTimer = null;
+let lastFile  = null;
+
+const CLASS_NAMES = [
+  "Trees","Lush Bushes","Dry Grass","Dry Bushes",
+  "Ground Clutter","Flowers","Logs","Rocks","Landscape","Sky"
+];
+const CLASS_COLORS = [
+  "#22a84a","#3ddc84","#d4a96a","#8b5e2e",
+  "#a0a0a0","#ff69b4","#7b4f28","#888888","#cc8844","#87ceeb"
+];
+
+// ── File handling ──────────────────────────────────────
+document.getElementById('file-input').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) { lastFile = f; loadFile(f); }
+});
+
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f) { lastFile = f; loadFile(f); }
+});
+
+function loadFile(file) {
+  const r = new FileReader();
+  r.onload = evt => {
+    try {
+      DATA = JSON.parse(evt.target.result);
+      render();
+    } catch(err) {
+      alert('Could not parse JSON: ' + err.message);
+    }
+  };
+  r.readAsText(file);
+}
+
+function refreshData() {
+  if (lastFile) loadFile(lastFile);
+}
+
+let autoOn = false;
+function autoRefreshToggle() {
+  autoOn = !autoOn;
+  document.getElementById('auto-label').textContent = autoOn ? 'ON (5s)' : 'OFF';
+  if (autoOn) {
+    autoTimer = setInterval(refreshData, 5000);
+    document.getElementById('live-dot').style.background = 'var(--green)';
+    document.getElementById('live-dot').style.boxShadow = '0 0 8px var(--green)';
+    document.getElementById('status-text').textContent = 'Live — refreshing every 5s';
+  } else {
+    clearInterval(autoTimer);
+    document.getElementById('live-dot').style.background = 'var(--muted)';
+    document.getElementById('live-dot').style.boxShadow = 'none';
+    document.getElementById('status-text').textContent = 'Auto-refresh off';
+  }
+}
+
+// ── Render ─────────────────────────────────────────────
+function render() {
+  if (!DATA) return;
+  const d = DATA;
+  const n = d.epochs.length;
+  if (n === 0) return;
+
+  // Show sections
+  ['stats','charts','class-grid','epoch-log','controls'].forEach(id => {
+    document.getElementById(id).style.display = '';
+  });
+  document.getElementById('empty-state').style.display = 'none';
+
+  const latest  = n - 1;
+  const bestIdx = d.mean_iou.indexOf(Math.max(...d.mean_iou));
+
+  // Stats
+  document.getElementById('s-epoch').textContent       = d.epochs[latest];
+  document.getElementById('s-epoch-total').textContent = `of ${d.epochs[latest]} trained`;
+  document.getElementById('s-iou').textContent         = d.mean_iou[bestIdx].toFixed(4);
+  document.getElementById('s-iou-epoch').textContent   = `at epoch ${d.epochs[bestIdx]}`;
+  document.getElementById('s-tloss').textContent       = d.train_loss[latest].toFixed(4);
+  document.getElementById('s-vloss').textContent       = d.val_loss[latest].toFixed(4);
+
+  if (!autoOn) {
+    document.getElementById('status-text').textContent = `Epoch ${d.epochs[latest]} loaded`;
+  }
+
+  // Charts
+  const chartOpts = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { color: '#5a6070', font: { family:'Space Mono', size:10 } } } },
+    scales: {
+      x: { grid: { color:'#1e2228' }, ticks: { color:'#5a6070', font:{ family:'Space Mono', size:9 } } },
+      y: { grid: { color:'#1e2228' }, ticks: { color:'#5a6070', font:{ family:'Space Mono', size:9 } } },
+    },
+  };
+
+  // Loss chart
+  const lossCtx = document.getElementById('loss-chart').getContext('2d');
+  if (lossChart) lossChart.destroy();
+  lossChart = new Chart(lossCtx, {
+    type: 'line',
+    data: {
+      labels: d.epochs,
+      datasets: [
+        { label: 'Train Loss', data: d.train_loss, borderColor: '#4fa3e0', backgroundColor: 'rgba(79,163,224,.08)', tension: 0.3, pointRadius: 0, borderWidth: 2 },
+        { label: 'Val Loss',   data: d.val_loss,   borderColor: '#e05c2a', backgroundColor: 'rgba(224,92,42,.08)',  tension: 0.3, pointRadius: 0, borderWidth: 2 },
+      ],
+    },
+    options: { ...chartOpts },
+  });
+
+  // IoU chart
+  const iouCtx = document.getElementById('iou-chart').getContext('2d');
+  if (iouChart) iouChart.destroy();
+  iouChart = new Chart(iouCtx, {
+    type: 'line',
+    data: {
+      labels: d.epochs,
+      datasets: [
+        { label: 'mIoU', data: d.mean_iou, borderColor: '#3ddc84', backgroundColor: 'rgba(61,220,132,.08)', tension: 0.3, pointRadius: 0, borderWidth: 2 },
+      ],
+    },
+    options: { ...chartOpts, scales: { ...chartOpts.scales, y: { ...chartOpts.scales.y, min: 0, max: 1 } } },
+  });
+
+  // Per-class IoU bars
+  const lastClassIoU = d.per_class_iou[latest];
+  const barsEl = document.getElementById('class-bars');
+  barsEl.innerHTML = '';
+  CLASS_NAMES.forEach((name, i) => {
+    const val = lastClassIoU[i];
+    const pct = val !== null ? (val * 100).toFixed(1) : 'N/A';
+    const w   = val !== null ? (val * 100).toFixed(1) + '%' : '0%';
+    const col = val !== null ? CLASS_COLORS[i] : '#333';
+    barsEl.innerHTML += `
+      <div class="class-bar-item">
+        <div class="class-bar-label">${name}</div>
+        <div class="class-bar-track">
+          <div class="class-bar-fill" style="width:${w}; background:${col};"></div>
+        </div>
+        <div class="class-bar-value">${pct}%</div>
+      </div>`;
+  });
+
+  // Epoch log table
+  const tbody = document.getElementById('log-body');
+  tbody.innerHTML = '';
+  const rows = [...d.epochs.keys()].reverse();
+  rows.forEach(i => {
+    const miou  = d.mean_iou[i];
+    const delta = i > 0 ? (miou - d.mean_iou[i-1]).toFixed(4) : '—';
+    const cls   = miou >= 0.6 ? 'iou-high' : miou >= 0.3 ? 'iou-mid' : 'iou-low';
+    const best  = i === bestIdx ? ' class="best"' : '';
+    const dStr  = delta !== '—' ? (parseFloat(delta) >= 0 ? '+' + delta : delta) : '—';
+    tbody.innerHTML += `<tr${best}>
+      <td>${d.epochs[i]}${i === bestIdx ? ' ★' : ''}</td>
+      <td>${d.train_loss[i].toFixed(4)}</td>
+      <td>${d.val_loss[i].toFixed(4)}</td>
+      <td><span class="iou-badge ${cls}">${miou.toFixed(4)}</span></td>
+      <td style="color:${parseFloat(delta)>=0?'var(--green)':'var(--accent2)'}">${dStr}</td>
+    </tr>`;
+  });
+}
+
+// ── Export ─────────────────────────────────────────────
+function exportSummary() {
+  if (!DATA) return;
+  const d    = DATA;
+  const n    = d.epochs.length;
+  const best = d.mean_iou.indexOf(Math.max(...d.mean_iou));
+  let md = `# AdaptSeg Training Summary\n\n`;
+  md += `**Total Epochs:** ${d.epochs[n-1]}\n`;
+  md += `**Best mIoU:** ${d.mean_iou[best].toFixed(4)} (epoch ${d.epochs[best]})\n`;
+  md += `**Final Train Loss:** ${d.train_loss[n-1].toFixed(4)}\n`;
+  md += `**Final Val Loss:** ${d.val_loss[n-1].toFixed(4)}\n\n`;
+  md += `## Per-Class IoU (Best Epoch)\n\n`;
+  CLASS_NAMES.forEach((name,i) => {
+    const v = d.per_class_iou[best][i];
+    md += `- **${name}**: ${v !== null ? (v*100).toFixed(1)+'%' : 'N/A'}\n`;
+  });
+  const blob = new Blob([md], {type:'text/markdown'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'adaptseg_summary.md';
+  a.click();
+}
+</script>
+</body>
+</html>
